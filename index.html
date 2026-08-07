@@ -1,0 +1,334 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>オンラインお絵描きゲーム (名前対応版)</title>
+  <script src="/socket.io/socket.io.js"></script>
+  <style>
+    * {
+      -webkit-touch-callout: none;
+      -webkit-user-select: none;
+      user-select: none;
+      touch-action: manipulation;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      text-align: center;
+      background: #f4f7f6;
+      margin: 0;
+      padding: 10px;
+    }
+
+    .container {
+      max-width: 650px;
+      margin: 0 auto;
+      background: white;
+      padding: 15px;
+      border-radius: 12px;
+      box-shadow: 0 4px 10px rgba(0,0,0,0.1);
+    }
+
+    #name-modal {
+      position: fixed;
+      top: 0; left: 0; width: 100%; height: 100%;
+      background: rgba(0,0,0,0.6);
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      z-index: 100;
+    }
+
+    .modal-content {
+      background: white;
+      padding: 25px;
+      border-radius: 12px;
+      text-align: center;
+      width: 80%;
+      max-width: 320px;
+    }
+
+    .modal-content input {
+      width: 80%;
+      padding: 10px;
+      margin: 15px 0;
+      font-size: 16px;
+      border: 2px solid #ddd;
+      border-radius: 8px;
+    }
+
+    .info-bar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 0 10px;
+    }
+
+    #player-list {
+      font-size: 14px;
+      color: #34495e;
+      background: #eef2f5;
+      padding: 8px;
+      border-radius: 8px;
+      margin-bottom: 10px;
+    }
+
+    #timer-display {
+      font-size: 22px;
+      font-weight: bold;
+      color: #e74c3c;
+      margin: 8px 0;
+    }
+
+    canvas {
+      border: 2px solid #333;
+      border-radius: 8px;
+      cursor: crosshair;
+      touch-action: none;
+      background: #fff;
+      display: block;
+      margin: 0 auto;
+    }
+
+    .tools {
+      margin: 10px 0;
+      display: flex;
+      justify-content: center;
+      gap: 10px;
+      flex-wrap: wrap;
+      align-items: center;
+    }
+
+    .color-btn {
+      width: 32px;
+      height: 32px;
+      border-radius: 50%;
+      border: 2px solid #ddd;
+      cursor: pointer;
+    }
+
+    button, select {
+      padding: 8px 12px;
+      font-size: 15px;
+      border-radius: 8px;
+      border: 1px solid #ccc;
+      background: #fff;
+      cursor: pointer;
+    }
+
+    .btn-main {
+      background: #3498db;
+      color: white;
+      border: none;
+      font-weight: bold;
+    }
+
+    #log {
+      font-size: 13px;
+      color: #7f8c8d;
+      height: 30px;
+      line-height: 30px;
+    }
+  </style>
+</head>
+<body>
+
+  <div id="name-modal">
+    <div class="modal-content">
+      <h2>🎨 お絵描きゲーム</h2>
+      <p>あなたの名前を入力してね</p>
+      <input type="text" id="username-input" placeholder="例: たろう" maxlength="10">
+      <button class="btn-main" onclick="joinGame()">参加する</button>
+    </div>
+  </div>
+
+  <div class="container">
+    <div class="info-bar">
+      <h1>🎨 お絵描き</h1>
+      <div id="player-count">参加者: - / -人</div>
+    </div>
+
+    <div id="player-list">参加メンバー: 読み込み中...</div>
+
+    <div class="tools">
+      <label for="max-player-select">定員: </label>
+      <select id="max-player-select" onchange="changeMaxPlayers(this.value)">
+        <option value="2">2人</option>
+        <option value="3">3人</option>
+        <option value="4">4人</option>
+        <option value="5">5人</option>
+        <option value="6">6人</option>
+        <option value="7">7人</option>
+        <option value="8" selected>8人</option>
+      </select>
+
+      <label for="time-select">時間: </label>
+      <select id="time-select">
+        <option value="30">30秒</option>
+        <option value="60">1分</option>
+        <option value="120">2分</option>
+      </select>
+      <button class="btn-main" onclick="startTimer()">スタート</button>
+    </div>
+
+    <div id="timer-display">残り時間: -- 秒</div>
+
+    <canvas id="canvas" width="500" height="500"></canvas>
+
+    <div id="log"></div>
+
+    <div class="tools">
+      <div class="color-btn" style="background: #000;" onclick="setColor('#000')"></div>
+      <div class="color-btn" style="background: #e74c3c;" onclick="setColor('#e74c3c')"></div>
+      <div class="color-btn" style="background: #3498db;" onclick="setColor('#3498db')"></div>
+      <div class="color-btn" style="background: #2ecc71;" onclick="setColor('#2ecc71')"></div>
+      <div class="color-btn" style="background: #f1c40f;" onclick="setColor('#f1c40f')"></div>
+
+      <label for="width-select">太さ: </label>
+      <select id="width-select" onchange="setWidth(this.value)">
+        <option value="3">細い</option>
+        <option value="8" selected>普通</option>
+        <option value="15">太い</option>
+      </select>
+
+      <button onclick="clearCanvas()">全消去</button>
+    </div>
+  </div>
+
+  <script>
+    const socket = io();
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+    let isDrawing = false;
+    let currentColor = '#000';
+    let currentWidth = 8;
+    let timerInterval = null;
+    let myName = '';
+
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+
+    function joinGame() {
+      const input = document.getElementById('username-input').value.trim();
+      myName = input || '名無しさん';
+      socket.emit('join-game', myName);
+      document.getElementById('name-modal').style.display = 'none';
+    }
+
+    function setColor(color) { currentColor = color; }
+    function setWidth(width) { currentWidth = width; }
+
+    function getCanvasPos(e) {
+      const rect = canvas.getBoundingClientRect();
+      const scaleX = canvas.width / rect.width;
+      const scaleY = canvas.height / rect.height;
+
+      return {
+        x: (e.clientX - rect.left) * scaleX,
+        y: (e.clientY - rect.top) * scaleY
+      };
+    }
+
+    function startDrawing(e) {
+      isDrawing = true;
+      const pos = getCanvasPos(e);
+      ctx.beginPath();
+      ctx.moveTo(pos.x, pos.y);
+      draw(e);
+    }
+
+    function stopDrawing() {
+      if (!isDrawing) return;
+      isDrawing = false;
+      ctx.beginPath();
+    }
+
+    function draw(e) {
+      if (!isDrawing) return;
+      e.preventDefault();
+
+      const pos = getCanvasPos(e);
+      executeDraw(pos.x, pos.y, currentColor, currentWidth);
+
+      socket.emit('draw', {
+        x: pos.x,
+        y: pos.y,
+        color: currentColor,
+        width: currentWidth
+      });
+    }
+
+    function executeDraw(x, y, color, width) {
+      ctx.strokeStyle = color;
+      ctx.lineWidth = width;
+      ctx.lineTo(x, y);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(x, y);
+    }
+
+    canvas.addEventListener('pointerdown', startDrawing);
+    canvas.addEventListener('pointermove', draw);
+    canvas.addEventListener('pointerup', stopDrawing);
+    canvas.addEventListener('pointerleave', stopDrawing);
+
+    function clearCanvas() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      socket.emit('clear');
+    }
+
+    function changeMaxPlayers(val) {
+      socket.emit('set-max-players', val);
+    }
+
+    socket.on('room-full', (msg) => {
+      alert(msg);
+    });
+
+    socket.on('player-update', (data) => {
+      document.getElementById('player-count').innerText = `参加者: ${data.current} / ${data.max}人`;
+      document.getElementById('max-player-select').value = data.max;
+
+      const names = Object.values(data.players).join(', ');
+      document.getElementById('player-list').innerText = `参加メンバー: ${names}`;
+    });
+
+    socket.on('system-message', (msg) => {
+      document.getElementById('log').innerText = msg;
+    });
+
+    socket.on('draw', (data) => {
+      executeDraw(data.x, data.y, data.color, data.width);
+    });
+
+    socket.on('clear', () => {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.beginPath();
+    });
+
+    function startTimer() {
+      const seconds = parseInt(document.getElementById('time-select').value);
+      socket.emit('start-timer', seconds);
+    }
+
+    socket.on('timer-start', (seconds) => {
+      clearInterval(timerInterval);
+      let timeLeft = seconds;
+      const display = document.getElementById('timer-display');
+      
+      display.innerText = `残り時間: ${timeLeft} 秒`;
+      
+      timerInterval = setInterval(() => {
+        timeLeft--;
+        if (timeLeft <= 0) {
+          clearInterval(timerInterval);
+          display.innerText = "⏰ 終了！";
+        } else {
+          display.innerText = `残り時間: ${timeLeft} 秒`;
+        }
+      }, 1000);
+    });
+  </script>
+</body>
+</html>
