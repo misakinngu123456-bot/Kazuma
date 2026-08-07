@@ -1,0 +1,71 @@
+const express = require('express');
+const app = express();
+const http = require('http').createServer(app);
+const io = require('socket.io')(http);
+
+app.use(express.static(__dirname));
+
+let maxPlayers = 8;
+const players = {};
+
+io.on('connection', (socket) => {
+  socket.on('join-game', (name) => {
+    const currentCount = Object.keys(players).length;
+
+    if (currentCount >= maxPlayers) {
+      socket.emit('room-full', `部屋が満員です（定員: ${maxPlayers}人）`);
+      socket.disconnect();
+      return;
+    }
+
+    players[socket.id] = name || '名無しさん';
+
+    io.emit('player-update', {
+      current: Object.keys(players).length,
+      max: maxPlayers,
+      players: players
+    });
+
+    io.emit('system-message', `${players[socket.id]} さんが参加しました！`);
+  });
+
+  socket.on('set-max-players', (newMax) => {
+    maxPlayers = parseInt(newMax);
+    io.emit('player-update', {
+      current: Object.keys(players).length,
+      max: maxPlayers,
+      players: players
+    });
+  });
+
+  socket.on('draw', (data) => {
+    socket.broadcast.emit('draw', data);
+  });
+
+  socket.on('clear', () => {
+    socket.broadcast.emit('clear');
+  });
+
+  socket.on('start-timer', (seconds) => {
+    io.emit('timer-start', seconds);
+  });
+
+  socket.on('disconnect', () => {
+    if (players[socket.id]) {
+      const leftName = players[socket.id];
+      delete players[socket.id];
+
+      io.emit('player-update', {
+        current: Object.keys(players).length,
+        max: maxPlayers,
+        players: players
+      });
+      io.emit('system-message', `${leftName} さんが退出しました。`);
+    }
+  });
+});
+
+const PORT = process.env.PORT || 3000;
+http.listen(PORT, () => {
+  console.log(`Server running on port ${PORT}`);
+});
